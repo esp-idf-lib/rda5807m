@@ -11,7 +11,7 @@ Driver for single-chip broadcast FM radio tuner RDA5807M.
 ## Installation
 
 ```sh
-idf.py add-dependency "esp-idf-lib/rda5807m^1.0.0
+idf.py add-dependency esp-idf-lib/rda5807m^1.0.0
 ```
 
 ## Support
