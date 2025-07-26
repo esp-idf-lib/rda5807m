@@ -1,5 +1,5 @@
 ---
-version: 1.0.1
+version: 1.0.2
 description: Driver for single-chip broadcast FM radio tuner RDA5807M
 license: BSD-3
 targets:
