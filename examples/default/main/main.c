@@ -14,7 +14,8 @@
 
 static const char *TAG = "rda5807m-example";
 
-static const char *states[] = {
+static const char *states[] =
+{
     [RDA5807M_SEEK_NONE]     = "---",
     [RDA5807M_SEEK_STARTED]  = ">>>",
     [RDA5807M_SEEK_COMPLETE] = "***",

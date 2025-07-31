@@ -79,7 +79,8 @@ typedef enum
 /**
  * FM Band
  */
-typedef enum {
+typedef enum
+{
     RDA5807M_BAND_87_108 = 0, //!< 87..108 MHz (US/Europe), default
     RDA5807M_BAND_76_91,      //!< 76..91 MHz (Japan)
     RDA5807M_BAND_76_108,     //!< 76..108 MHz (Worldwide)
@@ -90,7 +91,8 @@ typedef enum {
 /**
  * Seek status
  */
-typedef enum {
+typedef enum
+{
     RDA5807M_SEEK_NONE = 0, //!< There is currently no station seek
     RDA5807M_SEEK_STARTED,  //!< Seeking is in progress
     RDA5807M_SEEK_COMPLETE, //!< Seeking is complete

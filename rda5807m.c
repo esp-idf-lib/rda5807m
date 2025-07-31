@@ -124,7 +124,8 @@
 #define CHECK(x) do { esp_err_t __; if ((__ = x) != ESP_OK) return __; } while (0)
 #define CHECK_ARG(VAL) do { if (!(VAL)) return ESP_ERR_INVALID_ARG; } while (0)
 
-static const uint8_t spacings[] = {
+static const uint8_t spacings[] =
+{
     [RDA5807M_CHAN_SPACE_100] = 100,
     [RDA5807M_CHAN_SPACE_200] = 200,
     [RDA5807M_CHAN_SPACE_50]  = 50,
@@ -137,7 +138,8 @@ typedef struct
     uint32_t upper;
 } band_limit_t;
 
-static const band_limit_t band_limits[] = {
+static const band_limit_t band_limits[] =
+{
     [RDA5807M_BAND_87_108] = {87000, 108000},
     [RDA5807M_BAND_76_91]  = {76000, 91000},
     [RDA5807M_BAND_76_108] = {76000, 108000},
@@ -238,12 +240,12 @@ esp_err_t rda5807m_init(rda5807m_t *dev, rda5807m_clock_freq_t clock_freq)
     I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_CTRL, BV(BIT_CTRL_SOFT_RESET) | BV(BIT_CTRL_ENABLE)));
 
     I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_CTRL,
-            ((clock_freq & 7) << BIT_CTRL_CLK_MODE) | // Set clock mode
-            BV(BIT_CTRL_DHIZ) |                       // Enable audio output
-            BV(BIT_CTRL_DMUTE) |                      // Disable mute
-            BV(BIT_CTRL_RDS_EN) |                     // Enable RDS
-            BV(BIT_CTRL_ENABLE)                       // Enable chip
-    ));
+                                                       ((clock_freq & 7) << BIT_CTRL_CLK_MODE) | // Set clock mode
+                                                       BV(BIT_CTRL_DHIZ) |                       // Enable audio output
+                                                       BV(BIT_CTRL_DMUTE) |                      // Disable mute
+                                                       BV(BIT_CTRL_RDS_EN) |                     // Enable RDS
+                                                       BV(BIT_CTRL_ENABLE)                       // Enable chip
+                                                      ));
     // De-emphasis = 50us
     I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_R4, BV(BIT_R4_DE)));
     // Set volume = 0, Seek threshold = ~32 dB SNR, INT_MODE = 1 (?)
@@ -420,10 +422,10 @@ esp_err_t rda5807m_set_band(rda5807m_t *dev, rda5807m_band_t band)
 
     I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
     I2C_DEV_CHECK(&dev->i2c_dev, update_register_nolock(dev, REG_CHAN, MASK_CHAN_BAND,
-            (band <= RDA5807M_BAND_65_76 ? band : RDA5807M_BAND_65_76) << BIT_CHAN_BAND));
+                                                        (band <= RDA5807M_BAND_65_76 ? band : RDA5807M_BAND_65_76) << BIT_CHAN_BAND));
     if (band >= RDA5807M_BAND_65_76)
         I2C_DEV_CHECK(&dev->i2c_dev, update_register_nolock(dev, REG_R7, BV(BIT_R7_50M),
-                band == RDA5807M_BAND_65_76 ? BV(BIT_R7_50M) : 0));
+                                                            band == RDA5807M_BAND_65_76 ? BV(BIT_R7_50M) : 0));
     I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
 
     dev->band = band;
@@ -474,7 +476,7 @@ esp_err_t rda5807m_set_frequency_khz(rda5807m_t *dev, uint32_t frequency)
     if (frequency < band_limits[dev->band].lower || frequency > band_limits[dev->band].upper)
     {
         ESP_LOGE(TAG, "Could not set frequency: %" PRIu32 " kHz is out of bounds (%" PRIu32 "..%" PRIu32 ")",
-                frequency, band_limits[dev->band].lower, band_limits[dev->band].upper);
+                 frequency, band_limits[dev->band].lower, band_limits[dev->band].upper);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -486,7 +488,7 @@ esp_err_t rda5807m_set_frequency_khz(rda5807m_t *dev, uint32_t frequency)
     }
 
     CHECK(update_register(dev, REG_CHAN, MASK_CHAN_CHAN | BV(BIT_CHAN_TUNE),
-            (chan << BIT_CHAN_CHAN) | BV(BIT_CHAN_TUNE)));
+                          (chan << BIT_CHAN_CHAN) | BV(BIT_CHAN_TUNE)));
 
     ESP_LOGD(TAG, "Frequency: %" PRIu32 " kHz", chan * spacings[dev->spacing] + band_limits[dev->band].lower);
 
@@ -517,10 +519,10 @@ esp_err_t rda5807m_seek_start(rda5807m_t *dev, bool up, bool wrap, uint8_t thres
 
     I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
     I2C_DEV_CHECK(&dev->i2c_dev, update_register_nolock(dev, REG_VOL, MASK_VOL_SEEKTH,
-            threshold << BIT_VOL_SEEKTH));
+                                                        threshold << BIT_VOL_SEEKTH));
     I2C_DEV_CHECK(&dev->i2c_dev, update_register_nolock(dev, REG_CTRL,
-            BV(BIT_CTRL_SEEK) | BV(BIT_CTRL_SEEKUP) | BV(BIT_CTRL_SKMODE),
-            BV(BIT_CTRL_SEEK) | (up ? BV(BIT_CTRL_SEEKUP) : 0) | (wrap ? 0 : BV(BIT_CTRL_SKMODE))));
+                                                        BV(BIT_CTRL_SEEK) | BV(BIT_CTRL_SEEKUP) | BV(BIT_CTRL_SKMODE),
+                                                        BV(BIT_CTRL_SEEK) | (up ? BV(BIT_CTRL_SEEKUP) : 0) | (wrap ? 0 : BV(BIT_CTRL_SKMODE))));
     I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
 
     ESP_LOGD(TAG, "Seek started: %s, %s at bound, SNR threshold: %d", up ? "up" : "down", wrap ? "wrap" : "stop", threshold);
