@@ -145,6 +145,9 @@ esp_err_t rda5807m_free_desc(rda5807m_t *dev);
 /**
  * @brief Initialize device
  *
+ * Enables the device, selects the start of the default band (87 MHz) and waits
+ * for the calibration, so the status registers are valid afterwards.
+ *
  * @param dev Device descriptor
  * @param clock_freq RCLK frequency, usually `RDA5807M_CLK_32768HZ`
  * @return `ESP_OK` on success
@@ -153,6 +156,10 @@ esp_err_t rda5807m_init(rda5807m_t *dev, rda5807m_clock_freq_t clock_freq);
 
 /**
  * @brief Get current device status
+ *
+ * The frequency and the RSSI follow the channel being scanned while the seek is
+ * running, and the seek status is `RDA5807M_SEEK_STARTED` until the device
+ * finishes the scan.
  *
  * @param dev Device descriptor
  * @param[out] state Device status descriptor

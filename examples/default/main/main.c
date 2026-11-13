@@ -60,13 +60,16 @@ static void test(void *pvParameters)
         ESP_ERROR_CHECK(rda5807m_seek_start(&dev, true, true, RDA5807M_SEEK_TH_DEF));
         memset(&state, 0, sizeof(state));
 
-        while (state.seek_status != RDA5807M_SEEK_COMPLETE && !state.station)
+        while (state.seek_status != RDA5807M_SEEK_COMPLETE && state.seek_status != RDA5807M_SEEK_FAILED)
         {
             rda5807m_get_state(&dev, &state);
             vTaskDelay(pdMS_TO_TICKS(10));
         }
         ESP_ERROR_CHECK(rda5807m_seek_stop(&dev));
-        ESP_LOGI(TAG, "Found station");
+        if (state.seek_status == RDA5807M_SEEK_COMPLETE)
+            ESP_LOGI(TAG, "Found station at %" PRIu32 " kHz", state.frequency);
+        else
+            ESP_LOGW(TAG, "No station found up to the band limit");
 
         vTaskDelay(pdMS_TO_TICKS(5000));
     }

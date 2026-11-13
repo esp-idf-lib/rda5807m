@@ -197,9 +197,13 @@ static esp_err_t update_register(rda5807m_t *dev, uint8_t reg, uint16_t mask, ui
 
 static esp_err_t read_registers_bulk(rda5807m_t *dev, uint16_t *val, uint8_t count)
 {
+    // The read registers are returned sequentially starting from the requested
+    // one, so the block is read in a single transaction. A plain read from the
+    // sequential address 0x10 does not start at register A, it continues from
+    // the last accessed register and returns garbage otherwise
     I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
-    dev->i2c_dev.addr = I2C_ADDR_SEQ;
-    I2C_DEV_CHECK(&dev->i2c_dev, i2c_dev_read(&dev->i2c_dev, NULL, 0, val, count * 2));
+    dev->i2c_dev.addr = I2C_ADDR_IDX;
+    I2C_DEV_CHECK(&dev->i2c_dev, i2c_dev_read_reg(&dev->i2c_dev, REG_RA, val, count * 2));
     I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
 
     for (uint8_t i = 0; i < count; i++)
@@ -250,6 +254,18 @@ esp_err_t rda5807m_init(rda5807m_t *dev, rda5807m_clock_freq_t clock_freq)
     I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_R4, BV(BIT_R4_DE)));
     // Set volume = 0, Seek threshold = ~32 dB SNR, INT_MODE = 1 (?)
     I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_VOL, BV(BIT_VOL_INT_MODE) | (8 << BIT_VOL_SEEKTH)));
+    // The status registers, including READCHAN, are undefined until the first
+    // tune, so tune to the start of the default band (87..108 MHz, 100 kHz)
+    // and wait for the calibration to finish
+    I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_CHAN, BV(BIT_CHAN_TUNE)));
+    uint16_t status = 0;
+    for (int i = 0; i < 50; i++)
+    {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        I2C_DEV_CHECK(&dev->i2c_dev, read_register_nolock(dev, REG_RA, &status));
+        if (status & BV(BIT_RA_STC))
+            break;
+    }
 
     I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
 
@@ -270,15 +286,17 @@ esp_err_t rda5807m_get_state(rda5807m_t *dev, rda5807m_state_t *state)
     CHECK(read_registers_bulk(dev, r, 6));
     CHECK(read_register(dev, REG_CTRL, &ctrl));
 
-    if (r[0] & BIT_RA_SF) state->seek_status = RDA5807M_SEEK_FAILED;
-    else if (r[0] & BIT_RA_STC) state->seek_status = RDA5807M_SEEK_COMPLETE;
-    else if (ctrl & BIT_CTRL_SEEK) state->seek_status = RDA5807M_SEEK_STARTED;
+    // The STC and SF bits are set for a moment while the seek is still running,
+    // so the completion is reported only when the SEEK bit is cleared
+    if (ctrl & BV(BIT_CTRL_SEEK)) state->seek_status = RDA5807M_SEEK_STARTED;
+    else if (r[0] & BV(BIT_RA_SF)) state->seek_status = RDA5807M_SEEK_FAILED;
+    else if (r[0] & BV(BIT_RA_STC)) state->seek_status = RDA5807M_SEEK_COMPLETE;
     else state->seek_status = RDA5807M_SEEK_NONE;
 
     state->frequency = (r[0] & MASK_RA_READCHAN) * spacings[dev->spacing] + band_limits[dev->band].lower;
-    state->stereo = (r[0] & BIT_RA_ST) != 0;
-    state->station = (r[1] & BIT_RB_FM_ST) != 0;
-    state->rds_ready = (r[0] & BIT_RA_RDSR) != 0;
+    state->stereo = (r[0] & BV(BIT_RA_ST)) != 0;
+    state->station = (r[1] & BV(BIT_RB_FM_ST)) != 0;
+    state->rds_ready = (r[0] & BV(BIT_RA_RDSR)) != 0;
     state->rssi = r[1] >> BIT_RB_RSSI;
 
     memcpy(state->rds, &r[2], 8);
@@ -450,8 +468,33 @@ esp_err_t rda5807m_set_channel_spacing(rda5807m_t *dev, rda5807m_channel_spacing
 {
     CHECK_ARG(dev && spacing <= RDA5807M_CHAN_SPACE_25);
 
-    CHECK(update_register(dev, REG_CTRL, MASK_CHAN_SPACE, spacing));
+    if (spacing == dev->spacing)
+        return ESP_OK;
+
+    // The channel number counts the steps of the current spacing, so it has to
+    // be recomputed and the device has to be tuned again to stay on the same
+    // frequency
+    uint32_t frequency;
+    CHECK(rda5807m_get_frequency_khz(dev, &frequency));
+
+    uint16_t chan = (frequency - band_limits[dev->band].lower) / spacings[spacing];
+    if (chan > MAX_CHAN)
+    {
+        ESP_LOGE(TAG, "Could not set the channel spacing: %" PRIu32 " kHz does not fit the %d kHz step",
+                 frequency, spacings[spacing]);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint16_t band = (dev->band <= RDA5807M_BAND_65_76 ? dev->band : RDA5807M_BAND_65_76) << BIT_CHAN_BAND;
+
+    I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
+    I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_CHAN,
+                                                       band | spacing | (chan << BIT_CHAN_CHAN) | BV(BIT_CHAN_TUNE)));
+    I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+
     dev->spacing = spacing;
+
+    ESP_LOGD(TAG, "Channel spacing: %d kHz", spacings[spacing]);
 
     return ESP_OK;
 }
