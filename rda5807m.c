@@ -197,9 +197,13 @@ static esp_err_t update_register(rda5807m_t *dev, uint8_t reg, uint16_t mask, ui
 
 static esp_err_t read_registers_bulk(rda5807m_t *dev, uint16_t *val, uint8_t count)
 {
+    // The read registers are returned sequentially starting from the requested
+    // one, so the block is read in a single transaction. A plain read from the
+    // sequential address 0x10 does not start at register A, it continues from
+    // the last accessed register and returns garbage otherwise
     I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
-    dev->i2c_dev.addr = I2C_ADDR_SEQ;
-    I2C_DEV_CHECK(&dev->i2c_dev, i2c_dev_read(&dev->i2c_dev, NULL, 0, val, count * 2));
+    dev->i2c_dev.addr = I2C_ADDR_IDX;
+    I2C_DEV_CHECK(&dev->i2c_dev, i2c_dev_read_reg(&dev->i2c_dev, REG_RA, val, count * 2));
     I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
 
     for (uint8_t i = 0; i < count; i++)
