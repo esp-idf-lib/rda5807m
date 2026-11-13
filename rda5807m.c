@@ -456,8 +456,33 @@ esp_err_t rda5807m_set_channel_spacing(rda5807m_t *dev, rda5807m_channel_spacing
 {
     CHECK_ARG(dev && spacing <= RDA5807M_CHAN_SPACE_25);
 
-    CHECK(update_register(dev, REG_CTRL, MASK_CHAN_SPACE, spacing));
+    if (spacing == dev->spacing)
+        return ESP_OK;
+
+    // The channel number counts the steps of the current spacing, so it has to
+    // be recomputed and the device has to be tuned again to stay on the same
+    // frequency
+    uint32_t frequency;
+    CHECK(rda5807m_get_frequency_khz(dev, &frequency));
+
+    uint16_t chan = (frequency - band_limits[dev->band].lower) / spacings[spacing];
+    if (chan > MAX_CHAN)
+    {
+        ESP_LOGE(TAG, "Could not set the channel spacing: %" PRIu32 " kHz does not fit the %d kHz step",
+                 frequency, spacings[spacing]);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint16_t band = (dev->band <= RDA5807M_BAND_65_76 ? dev->band : RDA5807M_BAND_65_76) << BIT_CHAN_BAND;
+
+    I2C_DEV_TAKE_MUTEX(&dev->i2c_dev);
+    I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_CHAN,
+                                                       band | spacing | (chan << BIT_CHAN_CHAN) | BV(BIT_CHAN_TUNE)));
+    I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
+
     dev->spacing = spacing;
+
+    ESP_LOGD(TAG, "Channel spacing: %d kHz", spacings[spacing]);
 
     return ESP_OK;
 }
