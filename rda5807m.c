@@ -254,6 +254,18 @@ esp_err_t rda5807m_init(rda5807m_t *dev, rda5807m_clock_freq_t clock_freq)
     I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_R4, BV(BIT_R4_DE)));
     // Set volume = 0, Seek threshold = ~32 dB SNR, INT_MODE = 1 (?)
     I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_VOL, BV(BIT_VOL_INT_MODE) | (8 << BIT_VOL_SEEKTH)));
+    // The status registers, including READCHAN, are undefined until the first
+    // tune, so tune to the start of the default band (87..108 MHz, 100 kHz)
+    // and wait for the calibration to finish
+    I2C_DEV_CHECK(&dev->i2c_dev, write_register_nolock(dev, REG_CHAN, BV(BIT_CHAN_TUNE)));
+    uint16_t status = 0;
+    for (int i = 0; i < 50; i++)
+    {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        I2C_DEV_CHECK(&dev->i2c_dev, read_register_nolock(dev, REG_RA, &status));
+        if (status & BV(BIT_RA_STC))
+            break;
+    }
 
     I2C_DEV_GIVE_MUTEX(&dev->i2c_dev);
 
